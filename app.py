@@ -3,16 +3,15 @@ import pandas as pd
 import joblib
 from PIL import Image
 
-# -------------------------------
-# ✅ Must be first Streamlit call
-st.set_page_config(page_title="Euro 2024 Predictor", layout="centered")
-# -------------------------------
 
-# 📷 Load and show logo/image
+
+st.set_page_config(page_title="Euro 2024 Predictor", layout="centered")
+
+#  Load and show logo
 image = Image.open("assets/euro-2024.jpeg")
 st.image(image, use_column_width=True)
 
-# 🔢 Load models
+#  Load models
 home_xg_model = joblib.load("models/home_xg_model.pkl")
 away_xg_model = joblib.load("models/away_xg_model.pkl")
 outcome_model = joblib.load("models/outcome_model.pkl")
@@ -56,7 +55,7 @@ if st.button("Predict Result"):
     #  Align outcome features
     outcome_input = outcome_input.reindex(columns=outcome_model.feature_names_in_, fill_value=0)
 
-    # 🎯 Predict match outcome
+    # Predict match outcome
     result = outcome_model.predict(outcome_input)[0]
 
     #  Translate result
@@ -66,7 +65,7 @@ if st.button("Predict Result"):
         0: "Draw"
     }
 
-    # 📊 Output
+    #  Output
     st.subheader("Predicted Score:")
     st.markdown(f"**{home_team} xG:** {home_xg:.2f}")
     st.markdown(f"**{away_team} xG:** {away_xg:.2f}")
