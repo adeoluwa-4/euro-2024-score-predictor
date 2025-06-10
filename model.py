@@ -1,4 +1,4 @@
-# model.py
+
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.model_selection import train_test_split
@@ -48,7 +48,7 @@ clf.fit(X_train, y_train)
 
 y_pred = clf.predict(X_test)
 acc = accuracy_score(y_test, y_pred)
-print(f"✅ Outcome model accuracy (with predicted xG): {acc:.2f}")
+print(f" Outcome model accuracy (with predicted xG): {acc:.2f}")
 
 # Save all models
 joblib.dump(home_xg_model, "models/home_xg_model.pkl")
