@@ -1,73 +1,109 @@
-import streamlit as st
+from pathlib import Path
+from typing import Optional
+
 import pandas as pd
-import joblib
+import streamlit as st
 from PIL import Image
 
-# -------------------------------
-# ✅ Must be first Streamlit call
-st.set_page_config(page_title="Euro 2024 Predictor", layout="centered")
-# -------------------------------
+from src.pipeline.predictor import MatchPredictor
 
-# 📷 Load and show logo/image
-image = Image.open("assets/euro-2024.jpeg")
-st.image(image, use_column_width=True)
+st.set_page_config(page_title="Euro 2024 Match Predictor", layout="wide")
 
-# 🔢 Load models
-home_xg_model = joblib.load("models/home_xg_model.pkl")
-away_xg_model = joblib.load("models/away_xg_model.pkl")
-outcome_model = joblib.load("models/outcome_model.pkl")
+ASSET_IMAGE = Path("assets/euro-2024.jpeg")
+TEAM_PHOTOS_DIR = Path("assets/team_photos")
+FEATURE_DATA = Path("data/features/matches_features.csv")
 
-#  Title
+EURO_2024_TEAMS = [
+    "Albania", "Austria", "Belgium", "Croatia", "Czech Republic", "Denmark",
+    "England", "France", "Georgia", "Germany", "Hungary", "Italy",
+    "Netherlands", "Poland", "Portugal", "Romania", "Scotland", "Serbia",
+    "Slovakia", "Slovenia", "Spain", "Switzerland", "Turkey", "Ukraine",
+]
+
 st.title("Euro 2024 Match Predictor")
-st.markdown("Select two teams and we’ll predict the score & result based on historical stats.")
+st.caption("Pick two teams and get a projected score + winner.")
 
-#  Team options based on model training
-teams = sorted(list(set(
-    [col.replace("home_team_", "") for col in home_xg_model.feature_names_in_ if col.startswith("home_team_")]
-)))
+if ASSET_IMAGE.exists():
+    st.image(Image.open(ASSET_IMAGE), use_column_width=True)
 
-# Team inputs
-home_team = st.selectbox("Home Team", teams)
-away_team = st.selectbox("Away Team", [team for team in teams if team != home_team])
+if not FEATURE_DATA.exists():
+    st.warning("Data file missing. Run `python3 run_pipeline.py` first.")
+    st.stop()
 
-if st.button("Predict Result"):
-    #  Create input DataFrame
-    input_df = pd.DataFrame([{
-        "home_team": home_team,
-        "away_team": away_team
-    }])
+features_df = pd.read_csv(FEATURE_DATA)
+teams_in_data = set(features_df["home_team"]).union(set(features_df["away_team"]))
+teams = [team for team in EURO_2024_TEAMS if team in teams_in_data]
 
-    # One-hot encode
-    encoded_input = pd.get_dummies(input_df)
 
-    # Align with training features
-    encoded_input = encoded_input.reindex(columns=home_xg_model.feature_names_in_, fill_value=0)
+def find_team_photo(team: str) -> Optional[Path]:
+    if not TEAM_PHOTOS_DIR.exists():
+        return None
+    for ext in [".avif", ".webp", ".png", ".jpg", ".jpeg", ".JPG"]:
+        p = TEAM_PHOTOS_DIR / f"{team}{ext}"
+        if p.exists():
+            return p
+    return None
 
-    #  Predict xG
-    home_xg = home_xg_model.predict(encoded_input)[0]
-    away_xg = away_xg_model.predict(encoded_input)[0]
 
-    #  Prepare outcome prediction
-    outcome_input = pd.DataFrame([{
-        "Home Expected goals(xG)": home_xg,
-        "Away Expected goals(xG)": away_xg
-    }])
+def latest_for_pair(home: str, away: str) -> pd.Series:
+    pair = features_df[(features_df["home_team"] == home) & (features_df["away_team"] == away)]
+    if pair.empty:
+        pair = features_df[(features_df["home_team"] == away) & (features_df["away_team"] == home)]
+    if pair.empty:
+        home_rows = features_df[features_df["home_team"] == home]
+        away_rows = features_df[features_df["away_team"] == away]
+        if not home_rows.empty and not away_rows.empty:
+            mixed = pd.concat([home_rows.tail(1), away_rows.tail(1)])
+            return mixed.mean(numeric_only=True)
+        return features_df.iloc[-1]
+    return pair.iloc[-1]
 
-    #  Align outcome features
-    outcome_input = outcome_input.reindex(columns=outcome_model.feature_names_in_, fill_value=0)
 
-    # 🎯 Predict match outcome
-    result = outcome_model.predict(outcome_input)[0]
+left, right = st.columns(2)
+with left:
+    home_team = st.selectbox("Home Team", teams)
+with right:
+    away_team = st.selectbox("Away Team", [t for t in teams if t != home_team])
 
-    #  Translate result
-    result_text = {
-        1: f"{home_team} Win",
-        2: f"{away_team} Win",
-        0: "Draw"
+photo_col_1, photo_col_2 = st.columns(2)
+with photo_col_1:
+    st.markdown(f"### {home_team}")
+    home_photo = find_team_photo(home_team)
+    if home_photo:
+        st.image(str(home_photo), width=230)
+with photo_col_2:
+    st.markdown(f"### {away_team}")
+    away_photo = find_team_photo(away_team)
+    if away_photo:
+        st.image(str(away_photo), width=230)
+
+if st.button("Predict Match"):
+    base = latest_for_pair(home_team, away_team)
+    predictor = MatchPredictor()
+
+    payload = {
+        "elo_diff": float(base.get("elo_diff", 0.0)),
+        "fifa_rank_diff": float(base.get("fifa_rank_diff", 0.0)),
+        "fifa_points_diff": float(base.get("fifa_points_diff", 0.0)),
+        "tournament_importance_score": float(base.get("tournament_importance_score", 1.0)),
+        "h2h_matches_prior": float(base.get("h2h_matches_prior", 0.0)),
+        "h2h_goal_diff_prior": float(base.get("h2h_goal_diff_prior", 0.0)),
+        "home_points_per_match_last_5": float(base.get("home_points_per_match_last_5", 1.0)),
+        "away_points_per_match_last_5": float(base.get("away_points_per_match_last_5", 1.0)),
+        "home_points_per_match_last_10": float(base.get("home_points_per_match_last_10", 1.0)),
+        "away_points_per_match_last_10": float(base.get("away_points_per_match_last_10", 1.0)),
+        "home_goals_for_last_5": float(base.get("home_goals_for_last_5", 1.0)),
+        "away_goals_for_last_5": float(base.get("away_goals_for_last_5", 1.0)),
+        "home_goals_against_last_5": float(base.get("home_goals_against_last_5", 1.0)),
+        "away_goals_against_last_5": float(base.get("away_goals_against_last_5", 1.0)),
     }
 
-    # 📊 Output
-    st.subheader("Predicted Score:")
-    st.markdown(f"**{home_team} xG:** {home_xg:.2f}")
-    st.markdown(f"**{away_team} xG:** {away_xg:.2f}")
-    st.success(f"**Predicted Outcome:** {result_text[result]}")
+    pred = predictor.predict(payload)
+    st.success(f"Projected score: {home_team} {pred['home_goals']} - {pred['away_goals']} {away_team}")
+
+    if pred["predicted_outcome"] == "Home Win":
+        st.subheader(f"Predicted winner: {home_team}")
+    elif pred["predicted_outcome"] == "Away Win":
+        st.subheader(f"Predicted winner: {away_team}")
+    else:
+        st.subheader("Predicted result: Draw")
