@@ -72,11 +72,11 @@ def train_models(input_path: Optional[Path] = None) -> Dict[str, float]:
     outcome_features = FEATURE_COLUMNS.copy()
 
     outcome_model = HistGradientBoostingClassifier(
-        learning_rate=0.05,
-        max_depth=8,
-        max_iter=300,
+        learning_rate=0.07,
+        max_depth=6,
+        max_iter=500,
         max_leaf_nodes=63,
-        min_samples_leaf=30,
+        min_samples_leaf=20,
         l2_regularization=0.1,
         random_state=RANDOM_STATE,
     )
