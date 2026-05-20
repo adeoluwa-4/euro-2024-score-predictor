@@ -2,7 +2,7 @@
   "rows_total": 47335,
   "rows_train": 37868,
   "rows_test": 9467,
-  "outcome_accuracy": 0.5946973698109221,
+  "outcome_accuracy": 0.5950142600612655,
   "home_goals_mae": 1.0385843149470813,
   "away_goals_mae": 0.8485826511642918,
   "home_goals_r2": 0.30093152753990593,
